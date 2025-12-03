@@ -1,30 +1,58 @@
-// BitGridDepth.tsx
+// SplitBitGrid.tsx
 import React, { useEffect, useState } from "react";
 
-const CELL_SIZE = 16;
+const TOP_CELL_SIZE = 24;   // 上半分（大きめ）
+const BOTTOM_CELL_SIZE = 8; // 下半分（細かめ）
 
-export const BitGridDepth: React.FC = () => {
-  const [gridSize, setGridSize] = useState({ rows: 0, cols: 0 });
+export const BitGridFull: React.FC = () => {
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
-    const updateGrid = () => {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-
-      // ⬇️ ceil → floor に変更して「はみ出さないように」する
-      const cols = Math.max(1, Math.floor(width / CELL_SIZE));
-      const rows = Math.max(1, Math.floor(height / CELL_SIZE));
-
-      setGridSize({ cols, rows });
+    const update = () => {
+      setViewport({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
     };
 
-    updateGrid();
-    window.addEventListener("resize", updateGrid);
-    return () => window.removeEventListener("resize", updateGrid);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
   }, []);
 
-  const total = gridSize.rows * gridSize.cols;
-  const cells = Array.from({ length: total }, (_, i) => i);
+  const { width, height } = viewport;
+  if (!width || !height) return null;
+
+  const halfHeight = height / 2;
+  const centerX = width / 2;
+  const centerY = height / 2;
+
+  // 0〜1 に正規化された “中心からの距離” から shade を計算
+  const calcShade = (cx: number, cy: number) => {
+    const nx = (cx - centerX) / centerX; // -1〜1
+    const ny = (cy - centerY) / centerY; // -1〜1
+
+    // 縦方向を強めに効かせて遠近感っぽくする（0.4:0.6 の重み）
+    const dist = Math.sqrt(nx * nx * 0.4 + ny * ny * 0.6); // 0〜だいたい1.4くらい
+    const t = Math.min(1, dist); // 0〜1にクランプ
+
+    // 中央(距離0)がほぼ黒、端に行くほど白
+    const shade = Math.floor(255 * Math.pow(t, 0.8)); // 0〜255
+    return shade;
+  };
+
+  // ==== 上半分（大きいビット） ====
+  const topCols = Math.max(1, Math.floor(width / TOP_CELL_SIZE));
+  const topRows = Math.max(1, Math.floor(halfHeight / TOP_CELL_SIZE));
+  const topCells = Array.from({ length: topRows * topCols }, (_, i) => i);
+
+  // ==== 下半分（細かいビット） ====
+  const bottomCols = Math.max(1, Math.floor(width / BOTTOM_CELL_SIZE));
+  const bottomRows = Math.max(1, Math.floor(halfHeight / BOTTOM_CELL_SIZE));
+  const bottomCells = Array.from(
+    { length: bottomRows * bottomCols },
+    (_, i) => i
+  );
 
   return (
     <div
@@ -33,33 +61,73 @@ export const BitGridDepth: React.FC = () => {
         height: "100vh",
         margin: 0,
         padding: 0,
-        overflow: "hidden", // ⬅️ 念のためここでもスクロールを殺す
-        display: "grid",
-        gridTemplateColumns: `repeat(${gridSize.cols}, ${CELL_SIZE}px)`,
-        gridAutoRows: `${CELL_SIZE}px`,
+        overflow: "hidden", // スクロール禁止
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: "#000",
       }}
     >
-      {cells.map((i) => {
-        const row = Math.floor(i / gridSize.cols);
-        const col = i % gridSize.cols;
+      {/* 上半分（大きいビット） */}
+      <div
+        style={{
+          flex: "0 0 50%",
+          display: "grid",
+          gridTemplateColumns: `repeat(${topCols}, ${TOP_CELL_SIZE}px)`,
+          gridAutoRows: `${TOP_CELL_SIZE}px`,
+        }}
+      >
+        {topCells.map((i) => {
+          const row = Math.floor(i / topCols);
+          const col = i % topCols;
 
-        const depth =
-          (row / Math.max(1, gridSize.rows - 1)) * 0.6 +
-          (col / Math.max(1, gridSize.cols - 1)) * 0.4;
+          const cx = (col + 1 / 2) * TOP_CELL_SIZE;
+          const cy = (row + 1 / 2) * TOP_CELL_SIZE;
 
-        const shade = Math.floor(255 * (1 - depth));
+          const shade = calcShade(cx, cy);
 
-        return (
-          <div
-            key={i}
-            style={{
-              width: CELL_SIZE,
-              height: CELL_SIZE,
-              backgroundColor: `rgb(${shade}, ${shade}, ${shade})`,
-            }}
-          />
-        );
-      })}
+          return (
+            <div
+              key={i}
+              style={{
+                width: TOP_CELL_SIZE,
+                height: TOP_CELL_SIZE,
+                backgroundColor: `rgb(${shade}, ${shade}, ${shade})`,
+              }}
+            />
+          );
+        })}
+      </div>
+
+      {/* 下半分（細かいビット） */}
+      <div
+        style={{
+          flex: "0 0 50%",
+          display: "grid",
+          gridTemplateColumns: `repeat(${bottomCols}, ${BOTTOM_CELL_SIZE}px)`,
+          gridAutoRows: `${BOTTOM_CELL_SIZE}px`,
+        }}
+      >
+        {bottomCells.map((i) => {
+          const row = Math.floor(i / bottomCols);
+          const col = i % bottomCols;
+
+          const cx = (col + 1 / 2) * BOTTOM_CELL_SIZE;
+          const cy = halfHeight + (row + 1 / 2) * BOTTOM_CELL_SIZE;
+
+          const shade = calcShade(cx, cy);
+
+          return (
+            <div
+              key={i}
+              style={{
+                width: BOTTOM_CELL_SIZE,
+                height: BOTTOM_CELL_SIZE,
+                backgroundColor: `rgb(${shade}, ${shade}, ${shade})`,
+              }}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 };
